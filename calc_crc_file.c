@@ -13,7 +13,7 @@ static const uint16_t crc_table[16] =
 };
 
 
-uint32_t calc_crc(uint8_t *data, uint32_t len)
+static uint32_t calc_crc(uint8_t *data, uint32_t len)
 {
     uint32_t i;
     uint16_t crc = 0;
@@ -30,11 +30,11 @@ uint32_t calc_crc(uint8_t *data, uint32_t len)
     return (crc & 0xFFFF);
 }
 
-uint32_t calc_crc_file(char *file_name)
+uint32_t calc_crc_file(void)
 {
   int i = 0;
 
-  FILE *f = fopen(file_name, "r");
+  FILE *f = fopen("byte_mem.txt", "r");
   
   unsigned int hex_tempo;
 
@@ -47,13 +47,4 @@ uint32_t calc_crc_file(char *file_name)
   fclose(f);
 
   return calc_crc(pic_mem, MEM_LEN);
-}
-
-int main(int argc, char const *argv[])
-{
-  uint32_t crc = calc_crc_file("byte_mem.txt");
-
-  printf("%02X\n", crc);
-
-  return 0;
 }
