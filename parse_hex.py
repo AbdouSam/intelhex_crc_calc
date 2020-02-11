@@ -1,17 +1,32 @@
 import sys
 import collections
+import ctypes
+import os 
 
 PROG_ADDR_STR  = 0x1D000000 # The program code
 PROG_ADDR_END  = 0x1D1FFFFC # the last program mem address
 PROG_MEM_SIZE  = 0x200000
 EMPTY_MEM_WORD = [0xFF, 0xFF, 0xFF, 0xFF]
 
-def main():
-  # Get hex
-  try:
-    hex_file = str(sys.argv[1])
-  except:
-    raise IOError('Hex file does not exist.')
+def get_file_path():
+
+  path = os.path.realpath(__file__)
+
+  pathlist = path.split('/')
+
+  # Remove the name of file.
+  pathlist.pop()
+
+  path = ['/' + word for word in pathlist]
+
+  path.pop(0)
+  path.append('/')
+
+  path = ''.join(path)
+
+  return path
+
+def calc_crc_hex_file(hex_file):
 
   with open(hex_file) as hexfile:
     hexlines = hexfile.read().splitlines()
@@ -95,6 +110,27 @@ def main():
   with open("byte_mem.txt", "w") as f:
     for item in mem_values:
       f.write('{0:02X} {1:02X} {2:02X} {3:02X} '.format(item[0], item[1], item[2], item[3]))
+
+  crc_fun = ctypes.CDLL(get_file_path() + 'libcrc.so')
+  
+  crc_fun.calc_crc_file.restype = ctypes.c_uint
+
+  crc = crc_fun.calc_crc_file()
+
+  print("CRC is ", hex(crc))
+
+  os.remove("byte_mem.txt")
+
+  return crc
+
+def main():
+  # Get hex
+  try:
+    hex_file = str(sys.argv[1])
+  except:
+    raise IOError('Hex file does not exist.')
+
+  calc_crc_hex_file(hex_file)
 
 if __name__ == '__main__':
   main()
