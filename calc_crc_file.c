@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 
+#include "calc_crc_file.h"
+
 #define MEM_LEN 0x1fffff
 
 static uint8_t pic_mem[MEM_LEN] = {};
@@ -30,12 +32,18 @@ static uint32_t calc_crc(uint8_t *data, uint32_t len)
     return (crc & 0xFFFF);
 }
 
-uint32_t calc_crc_file(void)
+uint32_t calc_crc_file(char *filename)
 {
   int i = 0;
 
-  FILE *f = fopen("byte_mem.txt", "r");
+  FILE *f = fopen(filename, "r");
   
+  if (f == NULL)
+  {
+    printf("Memory file does not exist.\n");
+    exit(EXIT_FAILURE);
+  }
+
   unsigned int hex_tempo;
 
   for(i = 0; i < MEM_LEN; i++)
