@@ -119,7 +119,7 @@ def calc_crc_hex_file(hex_file):
 
   print("CRC is ", hex(crc))
 
-  os.remove("byte_mem.txt")
+  #os.remove("byte_mem.txt")
 
   return crc
 
