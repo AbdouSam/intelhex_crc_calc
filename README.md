@@ -1,9 +1,8 @@
 # intelhex_crc_calc
-Calculate crc16 of hex file (intel hex) for Microchip Bootloader crc check.
 
-The crc calculation is alot faster in C, we used shared library by compiling the 
-file calc_crc_file.c with the command
+Calculate crc16 of hex file (intel hex) for Microchip Bootloader Software crc check.
 
-cc -fPIC -shared -o libcrc.so calc_crc_file.c
+The `C` is integrated with `python`'s standard library `ctypes` to use the C code as part
+of a python script.
 
-This shared library is used in python
+cc -fPIC -shared -o libcrc.so cal_intelhex_crc.c calc_crc_file.c
