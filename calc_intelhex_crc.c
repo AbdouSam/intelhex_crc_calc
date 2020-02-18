@@ -4,66 +4,43 @@
 #include <string.h>
 #include <stdbool.h>
 
+#include "calc_crc_file.h"
+
 #define TEST
 
-#ifdef TEST
-#include "calc_crc_file.h"
-#endif
-
-#define PROG_ADDR_STR   (uint32_t)0x1D000000 /* The program code. */
-#define PROG_ADDR_END   (uint32_t)0x1D1FFFFC /* The last program mem address. */
-#define PROG_MEM_SIZE   (uint32_t)0x00200000 /* Memory size of PICMZ2048. */
-#define MEM_LEN         (uint32_t)0x1FFFFF   /* Length of data to calculate crc. */
+#define PICMZ_PROG_ADDR_STR   (uint32_t)0x1D000000 /* The program code. */
+#define PICMZ_PROG_ADDR_END   (uint32_t)0x1D1FFFFC /* The last program mem address. */
+#define PICMZ_PROG_MEM_LEN    (uint32_t)0x1FFFFF   /* Length of data to calculate crc. */
 
 /* PIC32MZ flash memory */
-static uint8_t pic_mem[PROG_MEM_SIZE];
-static uint32_t pic_mem_index = 0;
-
-#ifdef TEST
-/*
- * @brief : Compare CRC with a known crc of hex file.
- */
-static void test_function(uint8_t *data, uint32_t len)
-{
-  uint16_t crc_of_test_hex = 0x065D;
-
-  uint16_t crc = calc_crc(data, len, true);
-
-  if (crc != crc_of_test_hex)
-  {
-    printf("Error calc crc = %04X, file crc = %04X.\n", crc, crc_of_test_hex);
-    exit(EXIT_FAILURE);
-  }
-
-  printf("Sucess! CRC  = %04X is Correct\n", crc);
-}
-
-#endif
+static uint8_t mem_mcu[PICMZ_PROG_MEM_LEN];
+static uint32_t mem_mcu_index = 0;
 
 /*
  * @brief Rebase the first address memory to zero on 
  *        the pic memory array. And perform check to 
- *        store only Data memory. 
+ *        store only Data. 
  *
- * @memaddr : absolute memory address got from hex file.
+ * @memaddr : absolute address got from hex file.
+ * @return : true, skip next address line, false, don't skip.
  */
 
-static int set_mem_index(char *memaddr)
+static bool set_mem_index(char *memaddr)
 {
   uint32_t addr = strtol(memaddr, NULL, 16);
   
 
-  if (addr >= PROG_ADDR_STR && addr <= PROG_ADDR_END)
+  if (addr >= PICMZ_PROG_ADDR_STR && addr <= PICMZ_PROG_ADDR_END)
   {
     /* program mem. */
-    pic_mem_index = (addr  - PROG_ADDR_STR);
+    mem_mcu_index = (addr  - PICMZ_PROG_ADDR_STR);
 
-    return 0;
+    return false;
   }
   else
   {
     /* config mem. */
-    return -1;
+    return true;
   }
 }
 
@@ -102,19 +79,22 @@ static void parse_data_line(char *line)
     strncpy(temp_byte, line + 9 + i * 2, 2);
     temp_byte[2] = '\0';
     dbyte = strtol(temp_byte, NULL, 16);
-    pic_mem[pic_mem_index + addr_offset + i] = dbyte;
+    mem_mcu[mem_mcu_index + addr_offset + i] = dbyte;
   }
 
 }
 
+
 /*
  * @brief Parse the hex file into bytes, in the same order 
- *        of the MCU program memory.
+ *        of the MCU program memory. Calculate its CRC.
  *
  * @param filename : name of the hex file.
+ *
+ * @return CRC16 of the hex file.
  */
 
-void get_bytes_from_hex(char *filename)
+uint16_t get_crc_hexfile(char *filename, uint32_t mem_len)
 {
 
   FILE *hex = fopen(filename, "r");
@@ -124,14 +104,14 @@ void get_bytes_from_hex(char *filename)
   ssize_t readlen;
   bool addrline = false;
   bool skip_data = false;
-  uint32_t lineindex = 0;
   char temp_str_low[9];
   char temp_str_high[9];
   char * mem_addr_full;
+  uint16_t crc;
 
   /* Empty memory to 0xff. */
 
-  memset(pic_mem, 0xFF, sizeof(pic_mem));
+  memset(mem_mcu, 0xFF, sizeof(mem_mcu));
 
   if (NULL == hex)
   {
@@ -155,7 +135,7 @@ void get_bytes_from_hex(char *filename)
         mem_addr_full = strcat(temp_str_low, temp_str_high);
         mem_addr_full[8] = '\0';
         
-        if (set_mem_index(mem_addr_full) < 0)
+        if (set_mem_index(mem_addr_full))
         {
           skip_data = true;
         }
@@ -187,7 +167,7 @@ void get_bytes_from_hex(char *filename)
         mem_addr_full = strcat(temp_str_high, temp_str_low);
         mem_addr_full[8] = '\0';
 
-        if (set_mem_index(mem_addr_full) < 0)
+        if (set_mem_index(mem_addr_full))
         {
           skip_data = true;
         }
@@ -201,8 +181,6 @@ void get_bytes_from_hex(char *filename)
     else if (strstr(line, ":00000001") != NULL)
     {
       /* End of file code. */
-
-      printf("End of Hex file.\n");
     }
     else
     {
@@ -216,20 +194,38 @@ void get_bytes_from_hex(char *filename)
   }
 
   fclose(hex);
+
   if (line)
   {
     free(line);
   }
-
+  
+  crc = calc_crc(mem_mcu, mem_len, true);
+  return crc;
 }
 
+#ifdef TEST
 int main(int argc, char const *argv[])
 {
-  get_bytes_from_hex("hex_file.hex");
+  const char *filename = NULL;
+  uint16_t crc;
 
-  #ifdef TEST
-    test_function(pic_mem, MEM_LEN);
-  #endif
+  if (argc > 1)
+  {
+    filename = argv[1];
+  }
+
+  if(filename != NULL)
+  {
+    crc = get_crc_hexfile((char *)filename, PICMZ_PROG_MEM_LEN);
+  }
+  else
+  {
+    printf("Err Hex file not specified.\n");
+
+    exit(EXIT_FAILURE);
+  }
 
   return 0;
 }
+#endif
