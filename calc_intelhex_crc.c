@@ -25,13 +25,13 @@ static uint32_t pic_mem_index = 0;
  */
 static void test_function(uint8_t *data, uint32_t len)
 {
-  uint32_t crc_of_tes_hex = 0x065D;
+  uint16_t crc_of_test_hex = 0x065D;
 
-  uint32_t crc = calc_crc(data, len, true);
+  uint16_t crc = calc_crc(data, len, true);
 
-  if (crc != crc_of_tes_hex)
+  if (crc != crc_of_test_hex)
   {
-    printf("Error calc crc = %04X, file crc = %04X.\n", crc, crc_of_tes_hex);
+    printf("Error calc crc = %04X, file crc = %04X.\n", crc, crc_of_test_hex);
     exit(EXIT_FAILURE);
   }
 
