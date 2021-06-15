@@ -3,18 +3,55 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
+#include <error.h>
 
 #include "calc_crc_file.h"
 
-#define TEST
 
-#define PICMZ_PROG_ADDR_STR   (uint32_t)0x1D000000 /* The program code. */
-#define PICMZ_PROG_ADDR_END   (uint32_t)0x1D1FFFFC /* The last program mem address. */
-#define PICMZ_PROG_MEM_LEN    (uint32_t)0x1FFFFF   /* Length of data to calculate crc. */
+#define PICMZ_PROG_ADDR_STR  (uint32_t)0x1D000000 /* The program code. */
+#define PICMZ_PROG_ADDR_END  (uint32_t)0x1D1FFFFC /* The last program mem address. */
+#define PICMZ_PROG_MEM_LEN   (uint32_t)0x1FFFFF   /* Length of data to calculate crc. */
+#define PICMZ_PROG_ADDR_MAX  (uint32_t)(0x1D000000 + 0x1FFFFF)/* Maximum address. */
+/*
+ *
+ */
+static ssize_t getline_m(char **lineptr, size_t *n, FILE *stream);
 
 /* PIC32MZ flash memory */
 static uint8_t mem_mcu[PICMZ_PROG_MEM_LEN];
 static uint32_t mem_mcu_index = 0;
+
+/*
+ * @brief check memory length and memory address validity check
+ *
+ * @mem_len : length of data memory to calculate CRC over.
+ * @mem_start: starting memory address to calculate CRC from.
+ * 
+ * @return true if memory valid, false otherwise
+ */
+
+static bool memory_valid(int mem_len, int *mem_start)
+{
+  
+  int  moffset;
+
+  if (mem_len < 0 || mem_len >  PICMZ_PROG_MEM_LEN)
+  {
+    printf("Invalid memory length %X.\n", mem_len);
+    return false;
+  }
+
+  moffset = *mem_start - PICMZ_PROG_ADDR_STR;
+
+  if (moffset < 0 ||  (PICMZ_PROG_ADDR_STR + moffset + mem_len) > PICMZ_PROG_ADDR_MAX)
+  {
+    printf("Invalid memory offset %X.\n", moffset);
+    return false;
+  }
+  
+  *mem_start = moffset;
+  return true;
+}
 
 /*
  * @brief Rebase the first address memory to zero on 
@@ -94,7 +131,7 @@ static void parse_data_line(char *line)
  * @return CRC16 of the hex file.
  */
 
-uint16_t get_crc_hexfile(char *filename, uint32_t mem_len)
+uint16_t get_crc_hexfile(char *filename, uint32_t mem_len, uint32_t mem_start)
 {
 
   FILE *hex = fopen(filename, "r");
@@ -109,6 +146,13 @@ uint16_t get_crc_hexfile(char *filename, uint32_t mem_len)
   char * mem_addr_full;
   uint16_t crc;
 
+  /* Check memory validity */
+
+  if (!memory_valid(mem_len, &mem_start))
+  {
+    exit(EXIT_FAILURE);
+  }
+
   /* Empty memory to 0xff. */
 
   memset(mem_mcu, 0xFF, sizeof(mem_mcu));
@@ -120,7 +164,7 @@ uint16_t get_crc_hexfile(char *filename, uint32_t mem_len)
     exit(EXIT_FAILURE);
   }
 
-  while((readlen = getline(&line, &len, hex)) != -1)
+  while((readlen = getline_m(&line, &len, hex)) != -1)
   {
     if (addrline == true)
     {
@@ -200,14 +244,89 @@ uint16_t get_crc_hexfile(char *filename, uint32_t mem_len)
     free(line);
   }
   
-  crc = calc_crc(mem_mcu, mem_len, true);
+  crc = calc_crc(mem_mcu + mem_start, mem_len, true);
   return crc;
 }
+
+
+/* The original code is public domain -- Will Hartung 4/9/09 */
+/* Modifications, public domain as well, by Antti Haapala, 11/10/17
+   - Switched to getc on 5/23/19 */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <stdint.h>
+
+static ssize_t getline_m(char **lineptr, size_t *n, FILE *stream)
+{
+  size_t pos;
+  int c;
+
+  if (lineptr == NULL || stream == NULL || n == NULL) 
+  {
+    errno = EINVAL;
+    return -1;
+  }
+
+  c = getc(stream);
+  if (c == EOF) 
+  {
+    return -1;
+  }
+
+  if (*lineptr == NULL) 
+  {
+    *lineptr = malloc(128);
+    if (*lineptr == NULL) 
+    {
+      return -1;
+    }
+    *n = 128;
+  }
+
+  pos = 0;
+  while(c != EOF) 
+  {
+    if (pos + 1 >= *n) 
+    {
+      size_t new_size = *n + (*n >> 2);
+      if (new_size < 128) 
+      {
+        new_size = 128;
+      }
+
+      char *new_ptr = realloc(*lineptr, new_size);
+      if (new_ptr == NULL) 
+      {
+        return -1;
+      }
+
+      *n = new_size;
+      *lineptr = new_ptr;
+    }
+
+    ((unsigned char *)(*lineptr))[pos ++] = c;
+    if (c == '\n') 
+    {
+      break;
+    }
+    c = getc(stream);
+  }
+
+  (*lineptr)[pos] = '\0';
+  return pos;
+}
+
+
 
 #ifdef TEST
 int main(int argc, char const *argv[])
 {
   const char *filename = NULL;
+  uint32_t mem_start = PICMZ_PROG_ADDR_STR;
+  uint32_t mem_len = PICMZ_PROG_MEM_LEN;
+
   uint16_t crc;
 
   if (argc > 1)
@@ -215,14 +334,21 @@ int main(int argc, char const *argv[])
     filename = argv[1];
   }
 
+  if (argc > 3)
+  {
+    mem_len = (uint32_t)strtol(argv[2], NULL, 16);
+    mem_start = (uint32_t)strtol(argv[3], NULL, 16);
+  }
+
+
   if(filename != NULL)
   {
-    crc = get_crc_hexfile((char *)filename, PICMZ_PROG_MEM_LEN);
+    crc = get_crc_hexfile((char *)filename, mem_len, mem_start);
+    printf("crc = %04X\n", crc);
   }
   else
   {
     printf("Err Hex file not specified.\n");
-
     exit(EXIT_FAILURE);
   }
 
