@@ -4,29 +4,36 @@ import sys
 from ctypes import *
 import os 
 
-PICMZ_PROG_MEM_LEN =   0x1FFFFF
+import pathlib
+import platform
+
+PICMZ_PROG_MEM_LEN    = 0x1FFFFF
+PICMZ_PROG_MEM_START  = 0x1D000000 # physical addressing starting with 0x1d
 
 def get_file_path():
   """ctypes library requires the full path to the shared
   library.
   """
-  pathlist = os.path.realpath(__file__).split('/')[1:-1]
 
-  path = ['/' + word for word in pathlist]
+  return pathlib.Path(os.path.realpath(__file__)).parents[0]
 
-  path = ''.join(path) + '/'
-
-  return path
-
-def calc_crc_hex_file(hex_file):
+def calc_crc_hex_file(hex_file, mem_len, mem_start):
   """calculate crc16 of hex file using shared c library
   """
+  try:
+    if platform.system() == "Windows":
+      file_path = str(get_file_path() / 'hexcrclib.dll')
 
-  crclib = CDLL(get_file_path() + 'hexcrclib.so')
+    else:
+      file_path = str(get_file_path() / 'hexcrclib.so')
+
+    crclib = CDLL(file_path)
+  except Exception:
+    raise FileNotFoundError("Library file does not exist.")
   
   hex_file_p = create_string_buffer(hex_file.encode())
 
-  return crclib.get_crc_hexfile(hex_file_p, PICMZ_PROG_MEM_LEN)  
+  return crclib.get_crc_hexfile(hex_file_p, mem_len, mem_start)
 
 
 def main():
@@ -36,7 +43,8 @@ def main():
   except:
     raise IOError('Enter a hex file as first argument.')
 
-  crc = calc_crc_hex_file(hex_file)
+  # Example of calculating hex file for PIC32MZ2048EFM's full memory
+  crc = calc_crc_hex_file(hex_file, PICMZ_PROG_MEM_LEN, PICMZ_PROG_MEM_START)
 
   print(hex(crc))
 
